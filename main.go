@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
 )
 
@@ -36,6 +37,14 @@ var (
 			Name: "system_memory_usage",
 			Help: "Current memory usage percentage",
 		},
+	)
+
+	diskUsage = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "system_disk_usage",
+			Help: "Disk usage metrics",
+		},
+		[]string{"path", "metric"}, // metric can be "used", "free", "total"
 	)
 )
 
@@ -66,9 +75,7 @@ func registerGitHubMetrics() {
 }
 
 func registerSystemMetrics() {
-	prometheus.MustRegister(cpuUsage)
-	prometheus.MustRegister(memoryUsage)
-
+	prometheus.MustRegister(cpuUsage, memoryUsage, diskUsage)
 	go func() {
 		for {
 			if cpu, err := cpu.Percent(time.Second, false); err == nil {
@@ -77,6 +84,14 @@ func registerSystemMetrics() {
 
 			if memory, err := mem.VirtualMemory(); err == nil {
 				memoryUsage.Set(memory.UsedPercent)
+			}
+
+			diskStats, err := disk.Usage("/")
+			if err == nil {
+				diskUsage.WithLabelValues("/", "used").Set(float64(diskStats.Used))
+				diskUsage.WithLabelValues("/", "free").Set(float64(diskStats.Free))
+				diskUsage.WithLabelValues("/", "total").Set(float64(diskStats.Total))
+				diskUsage.WithLabelValues("/", "used_percent").Set(diskStats.UsedPercent)
 			}
 
 			time.Sleep(15 * time.Second)
